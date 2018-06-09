@@ -4,7 +4,7 @@
   "description": "",
   "private": true,
   "scripts": {
-    "dev": "node src/app.js",
+    "dev": "babel-node src/app.js",
     "build": "webpack --config build/webpack.config.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -19,15 +19,24 @@
   },
   "homepage": "https://github.com/jijiwuming/weixin-koa-backend#readme",
   "devDependencies": {
+    "babel-cli": "^6.26.0",
     "babel-core": "^6.26.3",
     "babel-loader": "^7.1.4",
+    "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-env": "^1.7.0",
+    "babel-preset-stage-0": "^6.24.1",
     "webpack": "^4.10.2",
     "webpack-cli": "^2.1.4"
   },
   "dependencies": {
+    "axios": "^0.18.0",
+    "babel-runtime": "^6.26.0",
+    "co-wechat": "^2.3.0",
+    "co-wechat-api": "^3.6.0",
     "koa": "^2.5.1",
     "koa-bodyparser": "^4.2.1",
-    "koa-router": "^7.4.0"
+    "koa-router": "^7.4.0",
+    "koa-static": "^4.0.3",
+    "wechat-oauth": "^1.4.2"
   }
 }

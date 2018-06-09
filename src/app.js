@@ -1,27 +1,261 @@
+import { token, appid, appsecret, domainName, encodingAESKey } from './config'
+const fs = require('fs')
+const crypto = require('crypto')
+const { Console } = require('console')
+const myConsole = new Console(process.stdout, process.stderr)
+
+const staticServe = require('koa-static')
 const koa = require('koa')
 const Router = require('koa-router')
 const router = new Router()
-const bodyParser = require('koa-bodyparser')
+// const bodyParser = require('koa-bodyparser')
+const wechat = require('co-wechat')
+const OAuth = require('wechat-oauth')
+const WechatAPI = require('co-wechat-api')
 const app = new koa()
+const tokenfile = 'access_token.txt'
+// 设置客户端
+const client = new OAuth(appid, appsecret, null, null, false) // 最后一个参数即isMiniProgram
+// 一个获取全局token的方法
+function getAccessToken() {
+    if (fs.existsSync(tokenfile)) {
+        var txt = fs.readFileSync(tokenfile, 'utf8')
+        return JSON.parse(txt)
+    } else {
+        return undefined
+    }
+}
+// 保存到本地
+function saveAccessToken(acceessToken) {
+    fs.writeFileSync(tokenfile, JSON.stringify(acceessToken))
+}
+// 配置全局的token
+const api = new WechatAPI(appid, appsecret, getAccessToken, saveAccessToken)
+let jsapi_ticket
+// 客服配置
+const config = {
+    token,
+    appid,
+    encodingAESKey
+}
+// 认证地址 天知道state是个啥
+// 参考‘微信网页授权’
+// https://mp.weixin.qq.com/wiki?t=resource/res_main&id=mp1421140842
+const oauthUrl = client.getAuthorizeURL(
+    `${domainName}/oauth`,
+    'state',
+    'snsapi_userinfo'
+)
+/**
+ * 处理文本内容
+ *
+ * @param {string} text 内容
+ * @returns
+ */
+function dealWithText(text) {
+    if (text && text === 'test') {
+        return {
+            title: '别测了，来段音乐吧',
+            description: '长生诀',
+            musicUrl:
+                'http://m10.music.126.net/20180604172600/eed6d7981cc271bdcb0bd3bae5a46b42/ymusic/e3b2/a6f8/0f6c/fbe9d39f3a861fc5518a838b10903b4f.mp3',
+            hqMusicUrl:
+                'http://m10.music.126.net/20180604172600/eed6d7981cc271bdcb0bd3bae5a46b42/ymusic/e3b2/a6f8/0f6c/fbe9d39f3a861fc5518a838b10903b4f.mp3'
+        }
+    } else if (text && text === 'oauth') {
+        myConsole.log(oauthUrl)
+        return [
+            {
+                title: '随缘了',
+                description: '这是佛系对话',
+                picurl:
+                    'https://timgsa.baidu.com/timg?image&quality=80&size=b9999_10000&sec=1528112830750&di=478506d2d1cfcb42c09d15ed33b2089c&imgtype=0&src=http%3A%2F%2Fimg.zcool.cn%2Fcommunity%2F0381de85949053ca8012193a3339cc5.jpg',
+                url: `http://${domainName}/test.html`
+            }
+        ]
+    } else if (text && text === '【收到不支持的消息类型，暂无法显示】') {
+        return {
+            content: '这我也认不了啊',
+            type: 'text'
+        }
+    } else {
+        return 'hhh'
+    }
+}
+/**
+ * 处理图片内容
+ *
+ * @param {Object} message 消息对象
+ * @returns
+ */
+function dealWithImg(message) {
+    return {
+        type: 'image',
+        content: {
+            mediaId: message.MediaId
+        }
+    }
+}
+/**
+ * 返回排序后的url字符串
+ *
+ * @param {*} obj
+ * @returns
+ */
+function objSortUrl(obj) {
+    let sortKeys = Object.keys(obj).sort()
+    let str = ''
+    for (let key of sortKeys) {
+        str += `${key}=${obj[key]}&`
+    }
+    str = str.substring(0, str.length - 1)
+    return str
+}
 
 // log request URL:
 app.use(async (ctx, next) => {
-  console.log(`Process ${ctx.request.method} ${ctx.request.url}...`)
-  await next()
+    myConsole.log(`Process ${ctx.request.method} ${ctx.request.url}...`)
+    await next()
 })
 
-router.get('/', (ctx, next) => {
-  if (ctx.query) {
-    let data = ctx.query.data
-    try {
-      let obj = JSON.parse(data)
-      console.dir(obj.a)
-    } catch (e) {
-      console.dir(e)
+// 认证回调
+router.get('/oauth', async ctx => {
+    if (ctx && ctx.query) {
+        let code = ctx.query.code
+        client.getAccessToken(code, function(err, result) {
+            myConsole.dir(result.data)
+        })
     }
-  }
 })
+// 获取sign
+router.get('/sign', async ctx => {
+    let queryObj = ctx.request.query
+    let error
+    let res
+    if (queryObj) {
+        let validTime = queryObj.timestamp
+        if (
+            !jsapi_ticket ||
+            !jsapi_ticket.ticket ||
+            jsapi_ticket.expireTime < validTime + 1000
+        ) {
+            let res = await api.getTicket()
+            if (res && res.expireTime > validTime) {
+                jsapi_ticket = res.ticket
+            } else {
+                error = new Error('服务出现问题')
+            }
+        }
+        myConsole.dir(queryObj)
+        myConsole.log(jsapi_ticket)
+        Object.assign(queryObj, {
+            jsapi_ticket
+        })
+        let sortURL = objSortUrl(queryObj)
+        myConsole.log(sortURL)
+        res = crypto
+            .createHash('sha1')
+            .update(sortURL)
+            .digest('hex')
+    } else {
+        error = new Error('参数有误')
+    }
+    if (error) {
+        ctx.response.body = JSON.stringify(error)
+    } else {
+        ctx.response.body = JSON.stringify(res)
+    }
+})
+// router.all('/html', staticServe('src'))
+// 微信公众号自动回复
+router.all(
+    '/',
+    wechat(config).middleware(async message => {
+        myConsole.dir(message)
+        if (message) {
+            let type = message.MsgType
+            let res = {}
+            switch (type) {
+            case 'image':
+                /**
+                     * {
+                     * ToUserName: 'gh_d8abdb55ca69',
+                     * FromUserName: 'oftd00n7XCv0sqdELPfwG0oKte0U',
+                     * CreateTime: '1528092938',
+                     * MsgType: 'image',
+                     * PicUrl: 'http://mmbiz.qpic.cn/mmbiz_jpg/niamP2aIgRibCnUXDFJdegGBwtobyafQjvt19z96g67r7g9Jgp50G4LswqNia5c8fFUyBs7f0K2WkU8d6DiblMsT9g/0',
+                     * MsgId: '6563109194384543859',
+                     * MediaId: '5OsElibb8yvblgFc9Uvz7zpTuu-5obSfiWWDovjuUcdRcswJc-rpUAVZXXmZNCqk'
+                     * }
+                     */
+                res = dealWithImg(message)
+                break
+            case 'text':
+                /**
+                     * {
+                     * ToUserName: 'gh_d8abdb55ca69',
+                     * FromUserName: 'oftd00n7XCv0sqdELPfwG0oKte0U',
+                     * CreateTime: '1528092773',
+                     * MsgType: 'text',
+                     * Content: '紧急',
+                     * MsgId: '6563108485714939998'
+                     * }
+                     */
+                res = dealWithText(message.Content)
+                break
+            case 'location':
+                /**
+                     * {
+                     * ToUserName: 'gh_d8abdb55ca69',
+                     * FromUserName: 'oftd00n7XCv0sqdELPfwG0oKte0U',
+                     * CreateTime: '1528092618',
+                     * MsgType: 'location',
+                     * Location_X: '30.199603',
+                     * Location_Y: '120.199583',
+                     * Scale: '15',
+                     * Label: '杭州市浙江大学医学院附属第二医院(滨江院区)',
+                     * MsgId: '6563107819995009088'
+                     * }
+                     */
+                break
+            case 'link':
+                /**
+                     * {
+                     * ToUserName: 'gh_d8abdb55ca69',
+                     * FromUserName: 'oftd00n7XCv0sqdELPfwG0oKte0U',
+                     * CreateTime: '1528093108',
+                     * MsgType: 'link',
+                     * Title: 'Python库大全（涵盖了Python应用的方方面面），建议收藏留用！',
+                     * Description: '网络爬虫要做的，简单来说，就是实现浏览器的功能。通过指定url，直接返回给用户所需要的数据，而不需要一步步人工去操纵浏览器获取。',
+                     * Url: 'http://mp.weixin.qq.com/s?__biz=MjM5NTEwMTAwNg==&mid=2650214801&idx=1&sn=8129dcf273166a752626d3a6b109fd84&chksm=befe11b0898998a69ada8222ec00c70ecc8f1f75114773b86671f5805d5c4b323bec4c093ba2&mpshare=1&scene=24&srcid=0530upgdrFsQpPvZaKmx1u2z#rd',
+                     * MsgId: '6563109924528984237'
+                     * }
+                     */
+                break
+            case 'voice':
+                /**
+                     * {
+                     * ToUserName: 'gh_d8abdb55ca69',
+                     * FromUserName: 'oftd00n7XCv0sqdELPfwG0oKte0U',
+                     * CreateTime: '1528093222',
+                     * MsgType: 'voice',
+                     * MediaId: 'BX0WFr1jGT-E2xPQshDMNaZEm9Dh6q_mkDmEw2z1Orvqq_Z5LU3EHDvJZ5v9Jou2',
+                     * Format: 'amr',
+                     * MsgId: '6563110414155255998',
+                     * Recognition: ''
+                     * }
+                     */
+                break
+            default:
+                break
+            }
+            return res
+        }
+    })
+)
+// 静态页面
+app.use(staticServe('src'))
 
 app.use(router.routes()).use(router.allowedMethods())
 
-app.listen(3000)
+app.listen(80)
