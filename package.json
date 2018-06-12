@@ -37,6 +37,7 @@
     "koa-bodyparser": "^4.2.1",
     "koa-router": "^7.4.0",
     "koa-static": "^4.0.3",
+    "koa2-cors": "^2.0.5",
     "wechat-oauth": "^1.4.2"
   }
 }

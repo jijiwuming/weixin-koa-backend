@@ -11,7 +11,7 @@ function paramsToUrl(obj) {
     return str
 }
 function pageReadyed() {
-    alert('准备好了吗？')
+    alert('准备好了')
 }
 window.onload = () => {
     let timestamp = Date.parse(new Date()) / 1000

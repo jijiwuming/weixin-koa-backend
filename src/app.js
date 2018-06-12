@@ -1,11 +1,13 @@
 import { token, appid, appsecret, domainName, encodingAESKey } from './config'
 const fs = require('fs')
 const crypto = require('crypto')
+const https = require('https')
 const { Console } = require('console')
 const myConsole = new Console(process.stdout, process.stderr)
 
 const staticServe = require('koa-static')
 const koa = require('koa')
+const cors = require('koa2-cors')
 const Router = require('koa-router')
 const router = new Router()
 // const bodyParser = require('koa-bodyparser')
@@ -32,6 +34,7 @@ function saveAccessToken(acceessToken) {
 // 配置全局的token
 const api = new WechatAPI(appid, appsecret, getAccessToken, saveAccessToken)
 let jsapi_ticket
+let cardapi_ticket // 微信卡券票据
 // 客服配置
 const config = {
     token,
@@ -46,6 +49,46 @@ const oauthUrl = client.getAuthorizeURL(
     'state',
     'snsapi_userinfo'
 )
+/**
+ * 获取卡券签名
+ *
+ * @param {String} accesstoken
+ * @returns
+ */
+function getCardTicket(accesstoken) {
+    return new Promise((resolve, reject) => {
+        https
+            .get(
+                `https://api.weixin.qq.com/cgi-bin/ticket/getticket?access_token=${accesstoken}&type=wx_card`,
+                res => {
+                    let { statusCode, headers } = res
+                    let error
+                    if (statusCode !== 200) {
+                        error = new Error(`请求出错:${statusCode}`)
+                    } else if (
+                        !headers['content-type'] ||
+                        !headers['content-type'].match(/^application\/json/i)
+                    ) {
+                        error = new Error('响应格式有误')
+                    }
+                    if (error) {
+                        reject(error)
+                    }
+                    let resdata = ''
+                    res.on('data', data => {
+                        resdata += data
+                    })
+                    res.on('end', () => {
+                        resdata = JSON.parse(resdata)
+                        resolve(resdata)
+                    })
+                }
+            )
+            .on('error', err => {
+                reject(err)
+            })
+    })
+}
 /**
  * 处理文本内容
  *
@@ -111,7 +154,6 @@ function objSortUrl(obj) {
     str = str.substring(0, str.length - 1)
     return str
 }
-
 // log request URL:
 app.use(async (ctx, next) => {
     myConsole.log(`Process ${ctx.request.method} ${ctx.request.url}...`)
@@ -137,11 +179,11 @@ router.get('/sign', async ctx => {
         if (
             !jsapi_ticket ||
             !jsapi_ticket.ticket ||
-            jsapi_ticket.expireTime < validTime + 1000
+            jsapi_ticket.expireTime < validTime
         ) {
             let res = await api.getTicket()
             if (res && res.expireTime > validTime) {
-                jsapi_ticket = res.ticket
+                jsapi_ticket = res
             } else {
                 error = new Error('服务出现问题')
             }
@@ -149,7 +191,8 @@ router.get('/sign', async ctx => {
         myConsole.dir(queryObj)
         myConsole.log(jsapi_ticket)
         Object.assign(queryObj, {
-            jsapi_ticket
+            jsapi_ticket:
+                jsapi_ticket && jsapi_ticket.ticket ? jsapi_ticket.ticket : ''
         })
         let sortURL = objSortUrl(queryObj)
         myConsole.log(sortURL)
@@ -166,7 +209,59 @@ router.get('/sign', async ctx => {
         ctx.response.body = JSON.stringify(res)
     }
 })
-// router.all('/html', staticServe('src'))
+router.get('/ticket/sign', async ctx => {
+    let queryObj = ctx.request.query
+    let error
+    let res
+    let validTime = queryObj.timestamp
+    if (queryObj) {
+        let { card_id, card_type, nonce_str, timestamp, location_id } = queryObj
+        if (
+            !cardapi_ticket ||
+            !cardapi_ticket.ticket ||
+            cardapi_ticket.expireTime < validTime
+        ) {
+            await api.getAccessToken().then(obj => {
+                return getCardTicket(obj.accessToken).then(res => {
+                    cardapi_ticket = {
+                        ticket: res.ticket,
+                        expireTime:
+                            new Date().valueOf() + (res.expires_in - 10) * 1000
+                    }
+                    return cardapi_ticket
+                })
+            })
+        }
+        myConsole.log(cardapi_ticket.ticket)
+        let signObj = {
+            api_ticket: cardapi_ticket.ticket,
+            appid,
+            location_id,
+            card_id,
+            card_type,
+            nonce_str,
+            timestamp
+        }
+        let signStr = ''
+        for (let value of Object.values(signObj).sort()) {
+            if (value) {
+                signStr += value
+            }
+        }
+        myConsole.log(signStr)
+        res = crypto
+            .createHash('sha1')
+            .update(signStr)
+            .digest('hex')
+    } else {
+        error = new Error('参数有误')
+    }
+    if (error) {
+        ctx.response.body = JSON.stringify(error)
+    } else {
+        ctx.response.body = JSON.stringify(res)
+    }
+})
 // 微信公众号自动回复
 router.all(
     '/',
@@ -253,6 +348,8 @@ router.all(
         }
     })
 )
+app.use(cors())
+
 // 静态页面
 app.use(staticServe('src'))
 
