@@ -215,7 +215,7 @@ router.get('/ticket/sign', async ctx => {
     let res
     let validTime = queryObj.timestamp
     if (queryObj) {
-        let { card_id, card_type, nonce_str, timestamp, location_id } = queryObj
+        let { cardId, cardType, nonceStr, timestamp, locationId } = queryObj
         if (
             !cardapi_ticket ||
             !cardapi_ticket.ticket ||
@@ -236,10 +236,10 @@ router.get('/ticket/sign', async ctx => {
         let signObj = {
             api_ticket: cardapi_ticket.ticket,
             appid,
-            location_id,
-            card_id,
-            card_type,
-            nonce_str,
+            locationId,
+            cardId,
+            cardType,
+            nonceStr,
             timestamp
         }
         let signStr = ''
