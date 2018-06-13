@@ -45,7 +45,7 @@ const config = {
 // 参考‘微信网页授权’
 // https://mp.weixin.qq.com/wiki?t=resource/res_main&id=mp1421140842
 const oauthUrl = client.getAuthorizeURL(
-    `http://${domainName}/oauth`,
+    `https://${domainName}/oauth`,
     'state',
     'snsapi_userinfo'
 )
@@ -100,10 +100,8 @@ function dealWithText(text) {
         return {
             title: '别测了，来段音乐吧',
             description: '长生诀',
-            musicUrl:
-                'http://m10.music.126.net/20180604172600/eed6d7981cc271bdcb0bd3bae5a46b42/ymusic/e3b2/a6f8/0f6c/fbe9d39f3a861fc5518a838b10903b4f.mp3',
-            hqMusicUrl:
-                'http://m10.music.126.net/20180604172600/eed6d7981cc271bdcb0bd3bae5a46b42/ymusic/e3b2/a6f8/0f6c/fbe9d39f3a861fc5518a838b10903b4f.mp3'
+            musicUrl: 'https://test.jijiwuming.cn/test.mp3',
+            hqMusicUrl: 'https://test.jijiwuming.cn/test.mp3'
         }
     } else if (text && text === 'oauth') {
         myConsole.log(oauthUrl)
@@ -122,8 +120,8 @@ function dealWithText(text) {
                 title: '呦，测插件呢',
                 description: '测插件好啊，测多了插件，插件自然会通的',
                 picurl:
-                    'http://imgsrc.baidu.com/imgad/pic/item/a50f4bfbfbedab646acef914fd36afc378311ea1.jpg',
-                url: `http://${domainName}/test.html`
+                    'https://imgsrc.baidu.com/imgad/pic/item/a50f4bfbfbedab646acef914fd36afc378311ea1.jpg',
+                url: `https://${domainName}/test.html`
             }
         ]
     } else if (text && text === '【收到不支持的消息类型，暂无法显示】') {
@@ -375,5 +373,5 @@ app.use(cors())
 app.use(staticServe('src'))
 
 app.use(router.routes()).use(router.allowedMethods())
-
-app.listen(80)
+// 采用nginx代理了，换端口喽
+app.listen(3000)
