@@ -45,7 +45,7 @@ const config = {
 // 参考‘微信网页授权’
 // https://mp.weixin.qq.com/wiki?t=resource/res_main&id=mp1421140842
 const oauthUrl = client.getAuthorizeURL(
-    `${domainName}/oauth`,
+    `http://${domainName}/oauth`,
     'state',
     'snsapi_userinfo'
 )
@@ -113,6 +113,16 @@ function dealWithText(text) {
                 description: '这是佛系对话',
                 picurl:
                     'https://timgsa.baidu.com/timg?image&quality=80&size=b9999_10000&sec=1528112830750&di=478506d2d1cfcb42c09d15ed33b2089c&imgtype=0&src=http%3A%2F%2Fimg.zcool.cn%2Fcommunity%2F0381de85949053ca8012193a3339cc5.jpg',
+                url: oauthUrl
+            }
+        ]
+    } else if (text && text === 'test plugin') {
+        return [
+            {
+                title: '呦，测插件呢',
+                description: '测插件好啊，测多了插件，插件自然会通的',
+                picurl:
+                    'http://imgsrc.baidu.com/imgad/pic/item/a50f4bfbfbedab646acef914fd36afc378311ea1.jpg',
                 url: `http://${domainName}/test.html`
             }
         ]
@@ -165,7 +175,17 @@ router.get('/oauth', async ctx => {
     if (ctx && ctx.query) {
         let code = ctx.query.code
         client.getAccessToken(code, function(err, result) {
-            myConsole.dir(result.data)
+            if (err) {
+                ctx.response.body = JSON.stringify(err)
+            }
+            if (result.data) {
+                // let accessToken = result.data.access_token
+                let openid = result.data.openid
+                client.getUser(openid, function(err, result) {
+                    myConsole.dir(result)
+                    ctx.response.body = JSON.stringify(result)
+                })
+            }
         })
     }
 })
@@ -209,6 +229,7 @@ router.get('/sign', async ctx => {
         ctx.response.body = JSON.stringify(res)
     }
 })
+// 卡券签名
 router.get('/ticket/sign', async ctx => {
     let queryObj = ctx.request.query
     let error
